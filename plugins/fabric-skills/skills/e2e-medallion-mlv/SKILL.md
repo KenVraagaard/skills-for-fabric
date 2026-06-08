@@ -63,11 +63,12 @@ data-quality controls).
 
 ### MUST DO
 - **Use managed Lakehouse tables as MLV sources** — created via `saveAsTable`, not external Delta paths (`.save(path)`). Mirrored replicas and OneLake shortcuts are **not** managed tables; materialize them first (see [EDW-SOURCE-INGESTION.md](../../common/EDW-SOURCE-INGESTION.md#the-managed-table-requirement-read-before-choosing)).
-- **Enable Change Data Feed on every source Delta table** that should drive incremental refresh:
+- **Enable Change Data Feed only on Bronze Delta tables you land yourself** (your own `saveAsTable` writes) to drive incremental refresh:
   ```sql
   alter table bc.sales_order_lines
    set tblproperties (delta.enableChangeDataFeed = true)
   ```
+- **⚠️ NEVER enable CDF on Fivetran-landed tables.** Fivetran manages those destination tables; enabling CDF forces a **full historical re-sync from Fivetran** — billable connector usage you do not want to pay for. Treat every Fivetran-sourced Bronze table as **CDF-off → always full refresh**, and plan the MLVs that read it accordingly. CDF is *only* for the Delta tables you write yourself.
 - **Author cross-layer transforms in Spark SQL** (not PySpark) when you want incremental/optimal refresh — see the PySpark limitation under AVOID.
 - **Follow [NAMING-CONVENTIONS.md](../../common/NAMING-CONVENTIONS.md)** for every name: snake_case MLVs with no prefix, source-system schemas in Bronze/Silver, business-domain schemas in Gold.
 - **Materialize each layer** — Bronze (ingested) → Silver MLVs → Gold MLVs. Do not collapse layers.
@@ -84,6 +85,7 @@ data-quality controls).
 ### AVOID
 - **PySpark-defined MLVs when you need incremental refresh** — **PySpark MLVs always full-refresh** (optimal refresh for PySpark is "coming soon", not GA). Use Spark SQL for incremental.
 - **Non-Delta sources for incremental** — incremental requires Delta sources with CDF; non-Delta sources always full-refresh.
+- **⚠️ Enabling CDF on Fivetran-landed Bronze** — never do this. It triggers a costly full re-sync from Fivetran. Fivetran tables must stay CDF-off, so every MLV sourced from them always full-refreshes.
 - **Assuming CDF alone guarantees incremental** — if the source records **deletes or updates** between refreshes, Fabric falls back to **full refresh even with CDF enabled and supported SQL**. Incremental applies only when sources are **append-only** between refreshes.
 - **External Delta paths as MLV sources** — managed tables only.
 - **Hardcoded workspace/lakehouse IDs** — discover via REST API.
@@ -99,15 +101,17 @@ Fabric applies **optimal refresh**: at each scheduled run it chooses the cheapes
 |----------|------------------------|
 | **Skip** | No changes detected in sources |
 | **Incremental** | Sources are Delta + CDF-enabled, **append-only** since last refresh, and the definition uses supported SQL constructs |
-| **Full** | Anything else — non-Delta source, no CDF, deletes/updates in source, unsupported construct, or a PySpark-defined MLV |
+| **Full** | Anything else — non-Delta source, no CDF, **Fivetran-landed source (CDF must stay off)**, deletes/updates in source, unsupported construct, or a PySpark-defined MLV |
 
 **Incremental-supported SQL constructs** (GA expansion): aggregations (`count`, `sum`, `group by`),
 left outer joins, left semi joins, and common table expressions. Most real-world Silver/Gold logic
 qualifies without rewriting.
 
 **Two hard gates for incremental:**
-1. **CDF on all source Delta tables** (`delta.enableChangeDataFeed = true`).
+1. **CDF on all source Delta tables** (`delta.enableChangeDataFeed = true`) — **on the tables you land yourself only** (see the Fivetran exception below).
 2. **Append-only sources** between refreshes. ERP/CRM/HRM systems frequently update and delete rows — when that happens, expect full refresh regardless of CDF. (Refresh hints to relax this are in private pilot; do not rely on them.) Plan cadence and capacity around occasional full refreshes for mutable sources.
+
+> **⚠️ Fivetran exception — do not miss this.** Fivetran-landed Bronze tables **must not** have CDF enabled: turning it on forces a full, billable re-sync from Fivetran. They therefore **never qualify for incremental refresh** — every MLV that reads a Fivetran source full-refreshes. Enable CDF only on the Delta tables **you** land via `saveAsTable`.
 
 Spark SQL definitions are eligible for optimal/incremental refresh; **PySpark definitions are not** (always full).
 
@@ -197,19 +201,8 @@ Land Bronze (managed tables + CDF) → Silver MLVs (conform/dedup) → Gold MLVs
 
 ### Example 3: Diagnose unexpected full refresh
 **Prompt**: "My MLV keeps doing full refreshes even though I enabled CDF."
-**What the LLM should check**: (1) is the definition PySpark? → always full; (2) is the source non-Delta? → always full; (3) does the source get **updates/deletes** between refreshes? → append-only violation forces full; (4) does the SQL use an unsupported construct? Guide to the supported-construct list.
+**What the LLM should check**: (0) **is the source a Fivetran-landed table?** → CDF must be off, so it always full-refreshes (and CDF should never be turned on — it forces a billable Fivetran re-sync); (1) is the definition PySpark? → always full; (2) is the source non-Delta? → always full; (3) does the source get **updates/deletes** between refreshes? → append-only violation forces full; (4) does the SQL use an unsupported construct? Guide to the supported-construct list.
 
 ### Example 4: ERP source planning
 **Prompt**: "Set up MLV medallion for our ERP — lots of updated records daily."
-**What the LLM should do**: flag that mutable ERP sources frequently trigger full refresh even with CDF; recommend cadence/capacity planning, consider splitting append-only fact streams from mutable dimensions, and land HR/Finance domains into domain-separated workspace sets.
-
----
-
-## References
-
-- [Overview of Materialized Lake Views — Microsoft Learn](https://learn.microsoft.com/en-us/fabric/data-engineering/materialized-lake-views/overview-materialized-lake-view)
-- [Refresh Materialized Lake Views — Microsoft Learn](https://learn.microsoft.com/en-us/fabric/data-engineering/materialized-lake-views/refresh-materialized-lake-view)
-- [Get started with Materialized Lake Views — Microsoft Learn](https://learn.microsoft.com/en-us/fabric/data-engineering/materialized-lake-views/get-started-with-materialized-lake-views)
-- [PySpark reference for Materialized Lake Views — Microsoft Learn](https://learn.microsoft.com/en-us/fabric/data-engineering/materialized-lake-views/create-materialized-lake-view-pyspark)
-- [Materialized Lake Views in Microsoft Fabric (Generally Available) — Fabric Blog](https://blog.fabric.microsoft.com/en-US/blog/materialized-lake-views-in-microsoft-fabric-generally-available/)
-- [Lakehouse schemas — Microsoft Learn](https://learn.microsoft.com/en-us/fabric/data-engineering/lakehouse-schemas)
+**What the LLM should d

@@ -16,7 +16,7 @@ Warehouse T-SQL, and Notebook patterns.
 | Method | Best for | Lands as | Managed Delta table? |
 |--------|----------|----------|----------------------|
 | **Database / Open Mirroring** | Sources with a supported mirror (e.g. Business Central, SQL-based ERPs) — near-real-time, low-config replication | Mirrored Delta in OneLake | Mirrored tables are read-only replicas — **shortcut or copy into a managed table** before MLV use |
-| **Fivetran (or similar SaaS ELT)** | Broad SaaS/ERP/CRM coverage (Salesforce, Workday, NetSuite) with managed connectors & schema drift handling | Delta tables in a Fabric destination | Verify the connector writes **managed** tables; if external, materialize |
+| **Fivetran (or similar SaaS ELT)** | Broad SaaS/ERP/CRM coverage (Salesforce, Workday, NetSuite) with managed connectors & schema drift handling | Delta tables in a Fabric destination | Managed in the destination — but **never enable CDF on them** (forces a billable Fivetran re-sync); MLVs reading them always full-refresh |
 | **Data Factory pipeline Copy activity** | Recurring scheduled pulls from databases, files, APIs, cloud storage | Files in `Files/` or Delta tables | Copy to `Tables/` (`saveAsTable`) for managed tables |
 | **OneLake shortcuts** | Data already in ADLS Gen2, S3, GCS, or another OneLake location — avoid duplication | Virtual reference (no copy) | Shortcuts are **not managed tables** — materialize before MLV use |
 | **OneLake API / `curl`** | One-off or scripted file uploads | Files in `Files/` | Read + `saveAsTable` to create managed table |
@@ -42,12 +42,14 @@ tables. This matters because the **MLV pattern requires managed source tables** 
 source Delta tables**. So:
 
 - **Mirrored tables and shortcuts are not directly usable as MLV sources.** Stage them into a managed Bronze (or Silver staging) table first.
-- Enable Change Data Feed on managed source tables intended for incremental MLV refresh:
+- Enable Change Data Feed on managed source tables **you land yourself** that are intended for incremental MLV refresh:
 
   ```sql
   alter table bc.sales_order_lines
    set tblproperties (delta.enableChangeDataFeed = true)
   ```
+
+- **⚠️ Fivetran exception — never enable CDF on Fivetran-landed tables.** Fivetran owns those destination tables; enabling CDF triggers a **full historical re-sync (billable connector usage)**. Enable CDF *only* on Delta tables you write yourself via `saveAsTable`. MLVs that read Fivetran Bronze always full-refresh — plan for it.
 
 - Materialize a shortcut/mirror into a managed table when needed:
 
@@ -84,7 +86,7 @@ from pyspark.sql.functions import current_timestamp, lit
 ## Source-System Notes (ERP / CRM / HRM)
 
 - **ERP** (Business Central, Infor LN, JD Edwards, SAP): high table counts, normalized schemas, frequent deletes/updates. Note the **append-only** constraint for incremental MLV refresh — updates/deletes in the source force a full refresh even with CDF enabled. Plan refresh cadence accordingly.
-- **CRM** (Salesforce, Dynamics): wide, sparsely-populated objects; mature managed connectors exist — Fivetran-style ELT is usually the lowest-effort path.
+- **CRM** (Salesforce, Dynamics): wide, sparsely-populated objects; mature managed connectors exist — Fivetran-style ELT is usually the lowest-effort path. **But Fivetran-landed tables must not have CDF enabled** (turning it on forces a billable full re-sync), so CRM MLVs sourced via Fivetran always full-refresh.
 - **HRM** (Workday, SAP SuccessFactors): sensitive payroll/PII data — land into a **domain-separated** workspace set (`HR_100_Bronze_{env}`) per [NAMING-CONVENTIONS.md § Domain separation](./NAMING-CONVENTIONS.md#domain--security-boundary-separation), and apply schema/workspace-level RBAC from the start.
 
 ---
