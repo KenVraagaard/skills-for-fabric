@@ -41,7 +41,8 @@
     "./skills/databricks-migration",
     "./skills/synapse-migration",
     "./skills/hdinsight-migration",
-    "./skills/e2e-medallion-architecture"
+    "./skills/e2e-medallion-architecture",
+    "./skills/e2e-medallion-mlv"
   ],
   "agents": [
     "./agents/FabricAdmin.agent.md",

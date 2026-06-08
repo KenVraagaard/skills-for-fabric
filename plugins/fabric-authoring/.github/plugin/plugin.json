@@ -24,7 +24,8 @@
     "./skills/semantic-model-authoring",
     "./skills/dataflows-authoring-cli",
     "./skills/dataflows-save-as-authoring-cli",
-    "./skills/e2e-medallion-architecture"
+    "./skills/e2e-medallion-architecture",
+    "./skills/e2e-medallion-mlv"
   ],
   "agents": [
     "./agents/FabricAdmin.agent.md",

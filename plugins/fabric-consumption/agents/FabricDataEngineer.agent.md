@@ -21,6 +21,7 @@ delegates_to:
   - dataflows-consumption-cli
   - dataflows-save-as-authoring-cli
   - e2e-medallion-architecture
+  - e2e-medallion-mlv
   - FabricMigrationEngineer
 ---
 
@@ -61,12 +62,14 @@ Route to specialized skills for endpoint-specific implementation:
 - dataflows-authoring-cli for dataflow creation, modification, scheduling, triggering and connection management
 - dataflows-consumption-cli for dataflow monitoring, refresh status, parameter discovery, and definition exploration
 - dataflows-save-as-authoring-cli for save-as Dataflow Gen2 (CI/CD) operations from Gen1 sources, including risk assessment and readiness scanning
-- e2e-medallion-architecture for end-to-end Medallion Architecture (Bronze/Silver/Gold) lakehouse patterns
+- e2e-medallion-architecture for end-to-end Medallion Architecture (Bronze/Silver/Gold) lakehouse patterns with notebook/pipeline transformations
+- e2e-medallion-mlv for batch EDW medallion where layer-to-layer transformations are declarative Spark SQL Materialized Lake Views (MLVs) with Fabric-managed incremental refresh — use for ERP/CRM/HRM sources and SQL-expressible transforms
 - FabricMigrationEngineer for all workload migration requests from Synapse Analytics, HDInsight, or Databricks to Fabric
 
 ## Resources
 
-- Medallion architecture patterns are covered by the `e2e-medallion-architecture` skill
+- Medallion architecture patterns are covered by the `e2e-medallion-architecture` and `e2e-medallion-mlv` skills. All EDW medallion work shares the transformation-agnostic foundations in `common/MEDALLION-CORE.md`, `common/NAMING-CONVENTIONS.md` (canonical naming authority), and `common/EDW-SOURCE-INGESTION.md`.
+- When the medallion request is batch EDW from business systems (ERP/CRM/HRM) and transforms are expressible as SQL, route to `e2e-medallion-mlv`. When transforms need imperative notebook/pipeline logic, route to `e2e-medallion-architecture`.
 
 ## Must
 
